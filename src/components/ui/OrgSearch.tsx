@@ -24,9 +24,11 @@ export function OrgSearch() {
   const [isFocused, setIsFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  const trimmedQuery = query.trim();
+  const visibleSuggestions = trimmedQuery.length < 2 ? [] : suggestions;
+
   useEffect(() => {
-    if (query.trim().length < 2) {
-      setSuggestions([]);
+    if (trimmedQuery.length < 2) {
       return;
     }
     const timeout = window.setTimeout(async () => {
@@ -34,7 +36,7 @@ export function OrgSearch() {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const response = await fetch(`/api/organizations/suggest?q=${encodeURIComponent(query)}`, {
+        const response = await fetch(`/api/organizations/suggest?q=${encodeURIComponent(trimmedQuery)}`, {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error('Suggestion request failed');
@@ -50,7 +52,7 @@ export function OrgSearch() {
       window.clearTimeout(timeout);
       abortRef.current?.abort();
     };
-  }, [query]);
+  }, [trimmedQuery]);
 
   if (paramQuery !== prevParam) {
     setPrevParam(paramQuery);
@@ -59,8 +61,8 @@ export function OrgSearch() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (activeSuggestion >= 0 && suggestions[activeSuggestion]) {
-      router.push(`/organizations/${suggestions[activeSuggestion].slug}`);
+    if (activeSuggestion >= 0 && visibleSuggestions[activeSuggestion]) {
+      router.push(`/organizations/${visibleSuggestions[activeSuggestion].slug}`);
       return;
     }
     updateUrl(query);
@@ -70,12 +72,12 @@ export function OrgSearch() {
     if (event.key === 'Escape') {
       setSuggestions([]);
       setActiveSuggestion(-1);
-    } else if (event.key === 'ArrowDown' && suggestions.length > 0) {
+    } else if (event.key === 'ArrowDown' && visibleSuggestions.length > 0) {
       event.preventDefault();
-      setActiveSuggestion((current) => (current + 1) % suggestions.length);
-    } else if (event.key === 'ArrowUp' && suggestions.length > 0) {
+      setActiveSuggestion((current) => (current + 1) % visibleSuggestions.length);
+    } else if (event.key === 'ArrowUp' && visibleSuggestions.length > 0) {
       event.preventDefault();
-      setActiveSuggestion((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+      setActiveSuggestion((current) => (current <= 0 ? visibleSuggestions.length - 1 : current - 1));
     }
   };
 
@@ -99,13 +101,14 @@ export function OrgSearch() {
         <Search size={18} className="text-muted group-hover:text-primary transition-colors mr-3 shrink-0" />
         <input
           type="text"
+          role="combobox"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onKeyDown={handleKeyDown}
           aria-autocomplete="list"
           aria-controls="organization-suggestions"
-          aria-expanded={isFocused && suggestions.length > 0}
+          aria-expanded={isFocused && visibleSuggestions.length > 0}
           placeholder="Search organizations by name..."
           className="flex-1 bg-transparent text-primary text-sm focus:outline-none placeholder-muted font-semibold w-full"
         />
@@ -127,9 +130,9 @@ export function OrgSearch() {
           {isPending ? 'Searching...' : 'Search'}
         </button>
       </div>
-      {isFocused && suggestions.length > 0 && (
+      {isFocused && visibleSuggestions.length > 0 && (
         <div id="organization-suggestions" role="listbox" className="absolute z-20 top-[60px] left-0 right-0 overflow-hidden rounded-2xl border border-hairline bg-surface shadow-xl">
-          {suggestions.map((suggestion, index) => (
+          {visibleSuggestions.map((suggestion, index) => (
             <button
               key={suggestion.slug}
               type="button"

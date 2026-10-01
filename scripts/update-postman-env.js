@@ -6,7 +6,9 @@ const path = require('path');
 function updatePostmanFiles() {
   console.log('Synchronizing API keys into Postman collection and environment files...');
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost'))
+    ? process.env.NEXT_PUBLIC_APP_URL
+    : 'https://contribo-one.vercel.app';
   const geminiApiKey = process.env.GEMINI_API_KEY || '';
   const openaiApiKey = process.env.OPENAI_API_KEY || '';
   const aiProvider = process.env.AI_PROVIDER || 'gemini';
@@ -17,6 +19,7 @@ function updatePostmanFiles() {
   const publicCollectionPath = path.join(__dirname, '..', 'public', 'postman_collection.json');
   const scratchEnvPath = path.join(__dirname, '..', 'scratch', 'postman_environment.json');
   const publicEnvPath = path.join(__dirname, '..', 'public', 'postman_environment.json');
+  const publicLocalEnvPath = path.join(__dirname, '..', 'public', 'postman_environment.local.json');
 
   let collection = {};
   if (fs.existsSync(scratchCollectionPath)) {
@@ -29,7 +32,7 @@ function updatePostmanFiles() {
 
   // Update variables in collection
   const variables = [
-    { key: 'baseUrl', value: baseUrl, description: 'Base URL for Contribo API' },
+    { key: 'baseUrl', value: baseUrl, description: 'Base URL for Contribo API (Deployed: https://contribo-one.vercel.app)' },
     { key: 'geminiApiKey', value: geminiApiKey, description: 'Gemini AI API Key' },
     { key: 'openaiApiKey', value: openaiApiKey, description: 'OpenAI API Key' },
     { key: 'aiProvider', value: aiProvider, description: 'Active AI Provider' },
@@ -56,10 +59,10 @@ function updatePostmanFiles() {
   fs.writeFileSync(publicCollectionPath, collectionJson, 'utf8');
   console.log(`✓ Updated Postman collection saved to:\n  - ${scratchCollectionPath}\n  - ${publicCollectionPath}`);
 
-  // Generate Postman Environment file
-  const postmanEnv = {
-    id: 'contribo-local-env',
-    name: 'Contribo Environment (Local)',
+  // Generate Postman Environment file (Production by default)
+  const postmanEnvProd = {
+    id: 'contribo-prod-env',
+    name: 'Contribo Environment (Production)',
     values: [
       { key: 'baseUrl', value: baseUrl, enabled: true },
       { key: 'geminiApiKey', value: geminiApiKey, enabled: true },
@@ -68,14 +71,37 @@ function updatePostmanFiles() {
       { key: 'githubClientId', value: githubClientId, enabled: true },
       { key: 'googleClientId', value: googleClientId, enabled: true },
       { key: 'sessionToken', value: 'YOUR_AUTHJS_SESSION_TOKEN_HERE', enabled: true },
+      { key: 'programSlug', value: 'gsoc', enabled: true },
+      { key: 'orgSlug', value: 'joplin', enabled: true },
     ],
     _postman_variable_scope: 'environment',
   };
 
-  const envJson = JSON.stringify(postmanEnv, null, 2);
-  fs.writeFileSync(scratchEnvPath, envJson, 'utf8');
-  fs.writeFileSync(publicEnvPath, envJson, 'utf8');
-  console.log(`✓ Postman environment file saved to:\n  - ${scratchEnvPath}\n  - ${publicEnvPath}`);
+  // Generate Postman Environment file (Local)
+  const postmanEnvLocal = {
+    id: 'contribo-local-env',
+    name: 'Contribo Environment (Local)',
+    values: [
+      { key: 'baseUrl', value: 'http://localhost:3000', enabled: true },
+      { key: 'geminiApiKey', value: geminiApiKey, enabled: true },
+      { key: 'openaiApiKey', value: openaiApiKey, enabled: true },
+      { key: 'aiProvider', value: aiProvider, enabled: true },
+      { key: 'githubClientId', value: githubClientId, enabled: true },
+      { key: 'googleClientId', value: googleClientId, enabled: true },
+      { key: 'sessionToken', value: 'YOUR_AUTHJS_SESSION_TOKEN_HERE', enabled: true },
+      { key: 'programSlug', value: 'gsoc', enabled: true },
+      { key: 'orgSlug', value: 'joplin', enabled: true },
+    ],
+    _postman_variable_scope: 'environment',
+  };
+
+  const prodEnvJson = JSON.stringify(postmanEnvProd, null, 2);
+  const localEnvJson = JSON.stringify(postmanEnvLocal, null, 2);
+
+  fs.writeFileSync(scratchEnvPath, prodEnvJson, 'utf8');
+  fs.writeFileSync(publicEnvPath, prodEnvJson, 'utf8');
+  fs.writeFileSync(publicLocalEnvPath, localEnvJson, 'utf8');
+  console.log(`✓ Postman environment files saved to:\n  - ${scratchEnvPath}\n  - ${publicEnvPath}\n  - ${publicLocalEnvPath}`);
 }
 
 updatePostmanFiles();

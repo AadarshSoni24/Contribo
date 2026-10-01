@@ -13,8 +13,8 @@ export type GeminiImproveResult = {
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
+  'gemini-flash-latest',
   'gemini-1.5-flash',
-  'gemini-1.5-pro',
 ] as const;
 
 export interface GeminiMatchItem {
@@ -46,7 +46,7 @@ export async function rankProjectsWithGemini(params: {
 Your mission is to evaluate and rank open-source projects and organizations for a contributor based on their skills, experience level, and weekly availability.
 
 Evaluation criteria:
-1. Technical & Practical Alignment: Match projects whose tech stack and ecosystem strongly align with user skills.
+1. Technical & Practical Alignment: Match projects whose tech stack and ecosystem strongly align with user skills (${params.skills.join(', ')}).
 2. Experience Level Suitability: Align project difficulty (${params.experience}) so beginners get high-quality approachable projects and advanced contributors get complex architecture/systems projects.
 3. Realistic Match Percentage: Produce a realistic match score from 40 to 98 (never 100). Higher scores for direct multi-skill synergy.
 4. Personalized Rationale: 1–2 sentences explaining why this organization/project fits their skill set and experience. Mention specific matched technologies.
@@ -75,11 +75,14 @@ ${JSON.stringify(params.candidates)}
 Rank the top candidate projects (up to ${topLimit}) ordered best match first. Return ONLY raw JSON.`;
 
   try {
-    const rawResponse = await generateGeminiContent(prompt, systemInstruction);
+    const rawResponse = await generateGeminiContent(prompt, systemInstruction, {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxTokens: 2400,
+    });
     if (!rawResponse) return null;
 
     let jsonStr = rawResponse.trim();
-    // Strip markdown code block if present
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
       jsonStr = codeBlockMatch[1];
@@ -101,18 +104,18 @@ Rank the top candidate projects (up to ${topLimit}) ordered best match first. Re
 
 export async function generateGeminiContent(
   prompt: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  options?: { responseMimeType?: string; maxTokens?: number; temperature?: number }
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     return null;
   }
 
-  // Bound prompt size to reduce cost / abuse if callers pass huge drafts
-  const safePrompt = prompt.slice(0, 24_000);
-  const safeSystem = systemInstruction?.slice(0, 4_000);
+  const safePrompt = prompt.slice(0, 32_000);
+  const safeSystem = systemInstruction?.slice(0, 8_000);
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     contents: [
       {
         role: 'user',
@@ -126,9 +129,9 @@ export async function generateGeminiContent(
       },
     ],
     generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 2048,
-      responseMimeType: 'application/json',
+      temperature: options?.temperature ?? 0.2,
+      maxOutputTokens: options?.maxTokens ?? 2048,
+      ...(options?.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
     },
   };
 
@@ -163,6 +166,34 @@ export async function generateGeminiContent(
   }
 
   return null;
+}
+
+export async function generateGeminiStructuredJson<T>(
+  prompt: string,
+  systemInstruction?: string,
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<T | null> {
+  const text = await generateGeminiContent(prompt, systemInstruction, {
+    responseMimeType: 'application/json',
+    temperature: options?.temperature ?? 0.2,
+    maxTokens: options?.maxTokens ?? 2500,
+  });
+
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]) as T;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 }
 
 export async function improveProposalSectionWithGemini(params: {

@@ -9,7 +9,7 @@ import {
 import { findProjectsBySkills, expandSkillTokens } from '@/lib/repositories/projects';
 import { getCollection, COLLECTIONS } from '@/lib/db';
 import { MAX_AI_BODY_BYTES, safeLogError } from '@/lib/security';
-import { rankProjectsWithGemini } from '@/lib/ai/gemini';
+import { rankProjectsWithGemini, generateGeminiStructuredJson } from '@/lib/ai/gemini';
 import type { Program, Project } from '@/../types';
 
 const MAX_SKILLS = 40;
@@ -151,7 +151,6 @@ async function enrichCandidates(candidates: Project[]): Promise<EnrichedProject[
     }
   }
 
-  // Group aggregate counts by orgSlug
   const countByOrgAndYear = new Map<string, Map<number, number>>();
   for (const row of yearlyAgg) {
     if (row._id?.orgSlug && row._id.year) {
@@ -169,50 +168,49 @@ async function enrichCandidates(candidates: Project[]): Promise<EnrichedProject[
       (p.orgSlug ? orgBySlug.get(p.orgSlug.toLowerCase()) : undefined) ||
       (p.org ? orgByName.get(p.org.toLowerCase()) : undefined);
 
-const KNOWN_ORG_WEBSITES: Record<string, string> = {
-  'rocket-chat': 'https://rocket.chat',
-  'rocketchat': 'https://rocket.chat',
-  'rocket.chat': 'https://rocket.chat',
-  'apache': 'https://apache.org',
-  'python': 'https://python.org',
-  'kde': 'https://kde.org',
-  'gnome': 'https://gnome.org',
-  'mozilla': 'https://mozilla.org',
-  'wikimedia': 'https://wikimediafoundation.org',
-  'tor': 'https://torproject.org',
-  'tor-project': 'https://torproject.org',
-  'homebrew': 'https://brew.sh',
-  'bioconductor': 'https://bioconductor.org',
-  'creative-commons': 'https://creativecommons.org',
-  'debian': 'https://debian.org',
-  'rust': 'https://www.rust-lang.org',
-  'cncf': 'https://cncf.io',
-  'open-robotics': 'https://www.openrobotics.org',
-  'ros': 'https://www.openrobotics.org',
-  'opencv': 'https://opencv.org',
-  'numfocus': 'https://numfocus.org',
-  'jupyter': 'https://jupyter.org',
-  'videolan': 'https://videolan.org',
-  'vlc': 'https://videolan.org',
-  'hyperledger': 'https://hyperledger.org',
-  'huggingface': 'https://huggingface.co',
-  'appwrite': 'https://appwrite.io',
-  'novu': 'https://novu.co',
-  'supabase': 'https://supabase.com',
-  'cal.com': 'https://cal.com',
-  'calcom': 'https://cal.com',
-  'strapi': 'https://strapi.io',
-  'posthog': 'https://posthog.com',
-  'hoppscotch': 'https://hoppscotch.io',
-  'girlscript': 'https://girlscript.tech',
-  'nsoc': 'https://nsoc.in',
-  '52north': 'https://52north.org',
-  '3dtk': 'http://slam6d.sourceforge.net',
-  'aflplusplus': 'https://aflplus.plus',
-  'joplin': 'https://joplinapp.org',
-};
+    const KNOWN_ORG_WEBSITES: Record<string, string> = {
+      'rocket-chat': 'https://rocket.chat',
+      'rocketchat': 'https://rocket.chat',
+      'rocket.chat': 'https://rocket.chat',
+      'apache': 'https://apache.org',
+      'python': 'https://python.org',
+      'kde': 'https://kde.org',
+      'gnome': 'https://gnome.org',
+      'mozilla': 'https://mozilla.org',
+      'wikimedia': 'https://wikimediafoundation.org',
+      'tor': 'https://torproject.org',
+      'tor-project': 'https://torproject.org',
+      'homebrew': 'https://brew.sh',
+      'bioconductor': 'https://bioconductor.org',
+      'creative-commons': 'https://creativecommons.org',
+      'debian': 'https://debian.org',
+      'rust': 'https://www.rust-lang.org',
+      'cncf': 'https://cncf.io',
+      'open-robotics': 'https://www.openrobotics.org',
+      'ros': 'https://www.openrobotics.org',
+      'opencv': 'https://opencv.org',
+      'numfocus': 'https://numfocus.org',
+      'jupyter': 'https://jupyter.org',
+      'videolan': 'https://videolan.org',
+      'vlc': 'https://videolan.org',
+      'hyperledger': 'https://hyperledger.org',
+      'huggingface': 'https://huggingface.co',
+      'appwrite': 'https://appwrite.io',
+      'novu': 'https://novu.co',
+      'supabase': 'https://supabase.com',
+      'cal.com': 'https://cal.com',
+      'calcom': 'https://cal.com',
+      'strapi': 'https://strapi.io',
+      'posthog': 'https://posthog.com',
+      'hoppscotch': 'https://hoppscotch.io',
+      'girlscript': 'https://girlscript.tech',
+      'nsoc': 'https://nsoc.in',
+      '52north': 'https://52north.org',
+      '3dtk': 'http://slam6d.sourceforge.net',
+      'aflplusplus': 'https://aflplus.plus',
+      'joplin': 'https://joplinapp.org',
+    };
 
-    // Derive Org Website and GitHub URLs:
     let orgWebsiteUrl = typeof org?.websiteUrl === 'string' && org.websiteUrl.trim().length > 0
       ? org.websiteUrl.trim()
       : undefined;
@@ -242,7 +240,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
       orgWebsiteUrl = orgGithubUrl || `https://${slugKey.replace(/[^a-z0-9]/g, '')}.org`;
     }
 
-    // Build yearly project stats for bar graph
     const orgCounts = countByOrgAndYear.get(slugKey) || new Map<number, number>();
     const orgYears = Array.isArray(org?.years) ? (org.years as number[]) : [];
     
@@ -252,7 +249,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
       ...(typeof p.year === 'number' ? [p.year] : []),
     ]);
 
-    // Ensure we have a reasonable distribution if sparse
     const sortedYears = Array.from(yearSet).filter((y) => y >= 2017 && y <= 2026).sort((a, b) => a - b);
     const yearlyStats: Array<{ year: number; count: number }> = [];
 
@@ -262,14 +258,12 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
         if (directCount && directCount > 0) {
           yearlyStats.push({ year: y, count: directCount });
         } else {
-          // Hash-based realistic historical count for that org's participating year
           const seed = (slugKey.charCodeAt(0) || 10) + y * 7;
           const pseudoCount = Math.max(3, (seed % 14) + 4);
           yearlyStats.push({ year: y, count: pseudoCount });
         }
       }
     } else {
-      // Default recent history range
       const defaultRange = [2021, 2022, 2023, 2024, 2025, 2026];
       for (const y of defaultRange) {
         const directCount = orgCounts.get(y);
@@ -293,25 +287,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
     };
   });
 }
-
-const SKILL_SYNONYMS: Record<string, string[]> = {
-  javascript: ['javascript', 'js', 'typescript', 'ts', 'node.js', 'nodejs', 'react', 'electron'],
-  typescript: ['typescript', 'ts', 'javascript', 'js', 'react', 'node.js', 'electron'],
-  react: ['react', 'reactjs', 'react.js', 'react native', 'react-native', 'next.js', 'electron'],
-  'react native': ['react native', 'react-native', 'react', 'mobile'],
-  'react-native': ['react native', 'react-native', 'react', 'mobile'],
-  electron: ['electron', 'desktop', 'node.js', 'javascript', 'typescript', 'react'],
-  'node.js': ['node.js', 'nodejs', 'express', 'javascript', 'typescript'],
-  nodejs: ['node.js', 'nodejs', 'express', 'javascript', 'typescript'],
-  python: ['python', 'django', 'flask', 'fastapi', 'ai', 'ml', 'pytorch', 'tensorflow'],
-  'c++': ['c++', 'c/c++', 'cpp', 'c'],
-  cpp: ['c++', 'c/c++', 'cpp', 'c'],
-  c: ['c', 'c++', 'c/c++'],
-  java: ['java', 'spring boot', 'android', 'kotlin'],
-  rust: ['rust'],
-  go: ['go', 'golang'],
-  golang: ['go', 'golang'],
-};
 
 function skillOverlap(
   project: { techStack?: string[]; topics?: string[]; title?: string; description?: string },
@@ -384,7 +359,6 @@ function difficultyFit(
     if (isIntermediate) return 0.80;
     return 0.50;
   }
-  // intermediate
   if (isIntermediate) return 1;
   if (isBeginner) return 0.8;
   return 0.65;
@@ -413,7 +387,6 @@ function enforceOrgDiversity<T extends { orgName?: string; orgSlug?: string; org
     if (result.length >= totalLimit) break;
   }
 
-  // If there are fewer than totalLimit items, backfill from remaining overflow
   if (result.length < totalLimit && overflow.length > 0) {
     for (const item of overflow) {
       result.push(item);
@@ -434,7 +407,6 @@ function heuristicRank(
     const projectSkills = p.techStack || [];
     const { matched, missing, matchedUserSkillCount, totalUserSkills } = skillOverlap(p, skills);
 
-    // Coverage ratio: how many of the user's requested skills/domains are covered
     const userCoverage = totalUserSkills > 0 ? matchedUserSkillCount / totalUserSkills : 0.5;
     const projectRatio = projectSkills.length > 0 ? matched.length / projectSkills.length : 0.4;
     const diffScore = difficultyFit(p.difficulty, exp);
@@ -454,7 +426,6 @@ function heuristicRank(
       yearScore * 0.12 +
       availScore * 0.08;
 
-    // High quality score range: ~40–97 based on rich multi-skill overlap
     const bonus = Math.min(matched.length, 6) * 2.0 + (p.year && p.year >= 2024 ? 2 : 0);
     const matchPercentage = Math.round(
       Math.min(97, Math.max(40, 38 + raw * 54 + bonus))
@@ -569,7 +540,6 @@ export async function POST(req: Request) {
     let finalMatches: MatchResult[] = heuristic;
     let mode: 'openai' | 'gemini' | 'heuristic' = 'heuristic';
 
-    // Candidate pool for AI ranking
     const pool = candidates
       .map((p, index) => ({ p, index }))
       .sort((a, b) => {
@@ -594,11 +564,11 @@ export async function POST(req: Request) {
       };
     });
 
-    const hasGeminiKey = !!process.env.GEMINI_API_KEY?.trim();
-    const preferredProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+    const activeProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+    let aiSuccess = false;
 
-    // 1. Try Google Gemini (Primary or when configured)
-    if (hasGeminiKey && preferredProvider !== 'openai' && pool.length > 0) {
+    // 1. Try Google Gemini (Primary)
+    if (activeProvider !== 'openai' && process.env.GEMINI_API_KEY && pool.length > 0) {
       try {
         const geminiMatches = await rankProjectsWithGemini({
           skills,
@@ -633,7 +603,7 @@ export async function POST(req: Request) {
                 reasoning:
                   typeof match.reasoning === 'string' && match.reasoning.trim()
                     ? match.reasoning.trim().slice(0, 600)
-                    : base?.reasoning || 'Strong skill and domain alignment with your profile.',
+                    : base?.reasoning || `Direct skill match for ${skills.join(', ')} with ${dbProject.org}.`,
                 programName: dbProject.programName || 'Open Source Program',
                 programColor: dbProject.programColor || '#4285F4',
                 programSlug: dbProject.programSlug,
@@ -658,21 +628,23 @@ export async function POST(req: Request) {
           if (mapped.length > 0) {
             finalMatches = enforceOrgDiversity(mapped, 2, TOP_RESULTS);
             mode = 'gemini';
+            aiSuccess = true;
           }
         }
       } catch (geminiErr) {
-        console.warn('Gemini matcher encountered error, checking fallback:', geminiErr);
+        console.warn('Gemini matcher call failed, trying fallback:', geminiErr);
       }
     }
 
-    // 2. Try OpenAI (Fallback or if AI_PROVIDER=openai)
-    const openai = getOpenAIClient();
-    if (mode === 'heuristic' && openai && pool.length > 0) {
-      try {
-        const systemPrompt = `You are an expert open-source mentorship matchmaker.
+    // 2. Try OpenAI if Gemini was not used or failed
+    if (!aiSuccess && pool.length > 0) {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const systemPrompt = `You are an expert open-source mentorship matchmaker.
 Rank ONLY from the candidate list. Never invent projects, orgs, or technologies.
 
-User:
+User Profile:
 - Skills: ${skills.join(', ')}
 - Experience: ${exp}
 - Location: ${locStr}
@@ -683,7 +655,7 @@ ${JSON.stringify(projectsContext)}
 
 Rules:
 1. Return up to ${TOP_RESULTS} best fits ordered best-first.
-2. Prefer higher matchedSkills count and recent year.
+2. Strictly prioritize candidates where the user's requested skills (${skills.join(', ')}) are central.
 3. Prefer difficulty aligned with experience (${exp}).
 4. Align weekly availability (${availNum}h/week) with expected workload.
 5. matchPercentage must reflect real overlap (weak overlap ≤55; strong multi-skill ≥75; never 100).
@@ -691,80 +663,77 @@ Rules:
 7. Return ONLY JSON: { "matches": [ { "id": number, "matchPercentage": number, "reasoning": string } ] }
 `;
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'system', content: systemPrompt }],
-          response_format: { type: 'json_object' },
-          temperature: 0.2,
-          max_tokens: 2400,
-        });
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'system', content: systemPrompt }],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+            max_tokens: 2400,
+          });
 
-        const aiResponseText = completion.choices[0].message.content || '{"matches":[]}';
-        const parsedAI = JSON.parse(aiResponseText) as {
-          matches?: Array<{ id: number; matchPercentage: number; reasoning: string }>;
-        };
+          const aiResponseText = completion.choices[0].message.content || '{"matches":[]}';
+          const parsedAI = JSON.parse(aiResponseText) as {
+            matches?: Array<{ id: number; matchPercentage: number; reasoning: string }>;
+          };
 
-        const aiMapped = (parsedAI.matches || [])
-          .map((match) => {
-            const entry = pool.find((x) => x.index === match.id);
-            const dbProject = entry?.p;
-            if (!dbProject) return null;
-            const { matched } = skillOverlap(dbProject, skills);
-            const base = heuristic.find((h) => h.projectId === String(dbProject._id));
-            const heuristicPct = base?.matchPercentage ?? 50;
-            const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
-            const blended = Math.round(aiPct * 0.55 + heuristicPct * 0.45);
+          const aiMapped = (parsedAI.matches || [])
+            .map((match) => {
+              const entry = pool.find((x) => x.index === match.id);
+              const dbProject = entry?.p;
+              if (!dbProject) return null;
+              const { matched } = skillOverlap(dbProject, skills);
+              const base = heuristic.find((h) => h.projectId === String(dbProject._id));
+              const heuristicPct = base?.matchPercentage ?? 50;
+              const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
+              const blended = Math.round(aiPct * 0.55 + heuristicPct * 0.45);
 
-            return {
-              id: dbProject._id?.toString(),
-              projectId: dbProject._id?.toString(),
-              title: dbProject.title,
-              orgName: dbProject.org,
-              orgSlug: dbProject.orgSlug,
-              techStack: dbProject.techStack || [],
-              description: dbProject.description,
-              matchPercentage: clampMatchPercentage(blended, heuristicPct),
-              reasoning:
-                typeof match.reasoning === 'string' && match.reasoning.trim()
-                  ? match.reasoning.trim().slice(0, 600)
-                  : base?.reasoning || 'Strong skill alignment with your profile.',
-              programName: dbProject.programName || 'Open Source Program',
-              programColor: dbProject.programColor || '#4285F4',
-              programSlug: dbProject.programSlug,
-              difficulty: dbProject.difficulty,
-              year: dbProject.year,
-              matchedSkills: matched.slice(0, 8),
-              githubUrl: dbProject.githubUrl,
-              orgLogoUrl: dbProject.orgLogoUrl,
-              orgWebsiteUrl: dbProject.orgWebsiteUrl,
-              orgGithubUrl: dbProject.orgGithubUrl,
-              orgCategory: dbProject.orgCategory,
-              orgDescription: dbProject.orgDescription,
-              orgIdeasUrl: dbProject.orgIdeasUrl,
-              orgTopics: dbProject.orgTopics,
-              yearlyStats: dbProject.yearlyStats,
-              stars: dbProject.stars,
-              mentors: dbProject.mentors,
-            } as MatchResult;
-          })
-          .filter(Boolean) as MatchResult[];
+              return {
+                id: dbProject._id?.toString(),
+                projectId: dbProject._id?.toString(),
+                title: dbProject.title,
+                orgName: dbProject.org,
+                orgSlug: dbProject.orgSlug,
+                techStack: dbProject.techStack || [],
+                description: dbProject.description,
+                matchPercentage: clampMatchPercentage(blended, heuristicPct),
+                reasoning:
+                  typeof match.reasoning === 'string' && match.reasoning.trim()
+                    ? match.reasoning.trim().slice(0, 600)
+                    : base?.reasoning || 'Strong skill alignment with your profile.',
+                programName: dbProject.programName || 'Open Source Program',
+                programColor: dbProject.programColor || '#4285F4',
+                programSlug: dbProject.programSlug,
+                difficulty: dbProject.difficulty,
+                year: dbProject.year,
+                matchedSkills: matched.slice(0, 8),
+                githubUrl: dbProject.githubUrl,
+                orgLogoUrl: dbProject.orgLogoUrl,
+                orgWebsiteUrl: dbProject.orgWebsiteUrl,
+                orgGithubUrl: dbProject.orgGithubUrl,
+                orgCategory: dbProject.orgCategory,
+                orgDescription: dbProject.orgDescription,
+                orgIdeasUrl: dbProject.orgIdeasUrl,
+                orgTopics: dbProject.orgTopics,
+                yearlyStats: dbProject.yearlyStats,
+                stars: dbProject.stars,
+                mentors: dbProject.mentors,
+              } as MatchResult;
+            })
+            .filter(Boolean) as MatchResult[];
 
-        if (aiMapped.length > 0) {
-          finalMatches = enforceOrgDiversity(aiMapped, 2, TOP_RESULTS);
-          mode = 'openai';
-        }
-      } catch (apiErr) {
-        const status =
-          apiErr && typeof apiErr === 'object' && 'status' in apiErr
-            ? Number((apiErr as { status?: number }).status)
-            : 0;
-        if (status === 401 || status === 403 || status === 429) {
-          disableOpenAITemporarily(status === 429 ? 5 * 60_000 : 30 * 60_000);
-          console.warn(
-            `OpenAI matcher disabled temporarily (HTTP ${status}); using heuristic ranking.`
-          );
-        } else {
-          console.warn('OpenAI matcher failed, using heuristic:', apiErr);
+          if (aiMapped.length > 0) {
+            finalMatches = enforceOrgDiversity(aiMapped, 2, TOP_RESULTS);
+            mode = 'openai';
+            aiSuccess = true;
+          }
+        } catch (apiErr) {
+          const status =
+            apiErr && typeof apiErr === 'object' && 'status' in apiErr
+              ? Number((apiErr as { status?: number }).status)
+              : 0;
+          if (status === 401 || status === 403 || status === 429) {
+            disableOpenAITemporarily(status === 429 ? 5 * 60_000 : 30 * 60_000);
+          }
         }
       }
     }

@@ -13,7 +13,10 @@ const domains = [
 
 function normalizeCategory(category) {
   const value = category.toLowerCase();
-  return domains.find(([, keywords]) => keywords.some((keyword) => value.includes(keyword)))?.[0] || 'Other';
+  return domains.find(([, keywords]) => keywords.some((keyword) => {
+    if (keyword === 'ai') return /\bai\b/i.test(value);
+    return value.includes(keyword);
+  }))?.[0] || 'Other';
 }
 
 function suggestionScore(query, name) {
