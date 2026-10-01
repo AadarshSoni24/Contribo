@@ -5,7 +5,11 @@
  */
 require('dotenv').config();
 
-const BASE = process.argv[2] || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const BASE =
+  process.argv[2] ||
+  (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')
+    ? process.env.NEXT_PUBLIC_APP_URL
+    : 'https://contribo-one.vercel.app');
 
 async function check(name, path, opts = {}) {
   const url = `${BASE.replace(/\/$/, '')}${path}`;

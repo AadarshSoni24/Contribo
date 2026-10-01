@@ -7,17 +7,17 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000",
-      "description": "Base URL for Contribo API"
+      "value": "https://contribo-one.vercel.app",
+      "description": "Base URL for Contribo API (Deployed: https://contribo-one.vercel.app)"
     },
     {
       "key": "geminiApiKey",
-      "value": "YOUR_GEMINI_API_KEY_HERE",
+      "value": "YOUR_GEMINI_API_KEY",
       "description": "Gemini AI API Key"
     },
     {
       "key": "openaiApiKey",
-      "value": "YOUR_OPENAI_API_KEY_HERE",
+      "value": "YOUR_OPENAI_API_KEY",
       "description": "OpenAI API Key"
     },
     {

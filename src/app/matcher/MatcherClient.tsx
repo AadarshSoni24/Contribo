@@ -551,8 +551,15 @@ export default function MatcherClient() {
                         ? `Showing ${Math.min(visibleCount, results.length)} of ${results.length} ranked projects ordered by skill fit.`
                         : 'No ranked results for this profile.'}
                       {matchMode && (
-                        <span className="block mt-1 font-mono text-[10px] uppercase tracking-wide text-muted">
-                          Mode: {matchMode}
+                        <span className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1 rounded-full bg-brass/10 border border-brass/30 text-brass text-xs font-mono font-bold">
+                          <Sparkles size={13} className="text-brass" />
+                          <span>
+                            {matchMode === 'gemini'
+                              ? 'Orbit AI • Gemini 3.8 Flash'
+                              : matchMode === 'openai'
+                              ? 'Orbit AI • Neural Engine'
+                              : 'Orbit AI • Skill Specificity Matcher'}
+                          </span>
                         </span>
                       )}
                     </p>

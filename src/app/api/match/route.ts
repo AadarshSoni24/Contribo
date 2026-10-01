@@ -9,6 +9,7 @@ import {
 import { findProjectsBySkills, expandSkillTokens } from '@/lib/repositories/projects';
 import { getCollection, COLLECTIONS } from '@/lib/db';
 import { MAX_AI_BODY_BYTES, safeLogError } from '@/lib/security';
+import { generateGeminiStructuredJson } from '@/lib/ai/gemini';
 import type { Program, Project } from '@/../types';
 
 const MAX_SKILLS = 40;
@@ -567,39 +568,35 @@ export async function POST(req: Request) {
 
     let finalMatches: MatchResult[] = heuristic;
     let mode: 'openai' | 'gemini' | 'heuristic' = 'heuristic';
-    const openai = getOpenAIClient();
 
-    if (openai && candidates.length > 0) {
-      try {
-        // Pass top candidate pool by heuristic to keep tokens small & ranking grounded
-        const pool = candidates
-          .map((p, index) => ({ p, index }))
-          .sort((a, b) => {
-            const ha = heuristic.find((h) => h.projectId === String(a.p._id));
-            const hb = heuristic.find((h) => h.projectId === String(b.p._id));
-            return (hb?.matchPercentage || 0) - (ha?.matchPercentage || 0);
-          })
-          .slice(0, 36);
+    const pool = candidates
+      .map((p, index) => ({ p, index }))
+      .sort((a, b) => {
+        const ha = heuristic.find((h) => h.projectId === String(a.p._id));
+        const hb = heuristic.find((h) => h.projectId === String(b.p._id));
+        return (hb?.matchPercentage || 0) - (ha?.matchPercentage || 0);
+      })
+      .slice(0, 36);
 
-        const projectsContext = pool.map(({ p, index }) => {
-          const { matched } = skillOverlap(p, skills);
-          return {
-            id: index,
-            title: p.title,
-            org: p.org,
-            difficulty: p.difficulty || 'unknown',
-            year: p.year,
-            techStack: (p.techStack || []).slice(0, 12).join(', '),
-            matchedSkills: matched.slice(0, 6).join(', '),
-            description: (p.description || '').substring(0, 220),
-            programName: p.programName,
-          };
-        });
+    const projectsContext = pool.map(({ p, index }) => {
+      const { matched } = skillOverlap(p, skills);
+      return {
+        id: index,
+        title: p.title,
+        org: p.org,
+        difficulty: p.difficulty || 'unknown',
+        year: p.year,
+        techStack: (p.techStack || []).slice(0, 10).join(', '),
+        matchedSkills: matched.slice(0, 6).join(', '),
+        description: (p.description || '').substring(0, 200),
+        programName: p.programName,
+      };
+    });
 
-        const systemPrompt = `You are an expert open-source mentorship matchmaker.
+    const systemPrompt = `You are Orbit AI, an expert open-source mentorship and project matchmaker.
 Rank ONLY from the candidate list. Never invent projects, orgs, or technologies.
 
-User:
+User Profile:
 - Skills: ${skills.join(', ')}
 - Experience: ${exp}
 - Location: ${locStr}
@@ -610,93 +607,158 @@ ${JSON.stringify(projectsContext)}
 
 Rules:
 1. Return up to ${TOP_RESULTS} best fits ordered best-first.
-2. Prefer higher matchedSkills count and recent year.
-3. Prefer difficulty aligned with experience (${exp}).
-4. Align weekly availability (${availNum}h/week) with expected workload:
-   - If availability is low (< 20 hours/week), favor "Beginner" difficulty projects or programs like Hacktoberfest, NSoC, GSSoC.
-   - If availability is high (>= 20 hours/week), intermediate and advanced projects or programs like GSoC, Outreachy, LFX, MLH Fellowship are highly suitable.
-5. matchPercentage must reflect real overlap (weak overlap ≤55; strong multi-skill ≥75; never 100).
-6. reasoning: 1–2 sentences, concrete, mention matched skills and how they fit user experience/availability.
+2. Strictly prioritize candidates where the user's requested skills (${skills.join(', ')}) are central.
+3. Do NOT favor projects where the user's skill is only a minor footnote among unrelated technologies.
+4. Prefer difficulty aligned with experience (${exp}) and recent years (2024-2026).
+5. matchPercentage: 78–96 for strong direct skill overlap; 50–75 for moderate.
+6. reasoning: 1–2 sentences, concrete, mentioning how the user's specific skills (${skills.join(', ')}) directly apply to this project and organization.
 7. Return ONLY JSON: { "matches": [ { "id": number, "matchPercentage": number, "reasoning": string } ] }
 `;
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'system', content: systemPrompt }],
-          response_format: { type: 'json_object' },
-          temperature: 0.2,
-          max_tokens: 2400,
-        });
+    const activeProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+    let aiSuccess = false;
 
-        const aiResponseText = completion.choices[0].message.content || '{"matches":[]}';
-        const parsedAI = JSON.parse(aiResponseText) as {
+    // 1. Try Gemini first if configured or fallback
+    if (activeProvider !== 'openai' && process.env.GEMINI_API_KEY && pool.length > 0) {
+      try {
+        const geminiRes = await generateGeminiStructuredJson<{
           matches?: Array<{ id: number; matchPercentage: number; reasoning: string }>;
-        };
+        }>(systemPrompt, undefined, { temperature: 0.2, maxTokens: 2400 });
 
-        const aiMapped = (parsedAI.matches || [])
-          .map((match) => {
-            const entry = pool.find((x) => x.index === match.id);
-            const dbProject = entry?.p;
-            if (!dbProject) return null;
-            const { matched } = skillOverlap(dbProject, skills);
-            const base = heuristic.find((h) => h.projectId === String(dbProject._id));
-            const heuristicPct = base?.matchPercentage ?? 50;
-            const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
-            const blended = Math.round(aiPct * 0.55 + heuristicPct * 0.45);
+        if (geminiRes?.matches && Array.isArray(geminiRes.matches) && geminiRes.matches.length > 0) {
+          const geminiMapped = geminiRes.matches
+            .map((match) => {
+              const entry = pool.find((x) => x.index === match.id);
+              const dbProject = entry?.p;
+              if (!dbProject) return null;
+              const { matched } = skillOverlap(dbProject, skills);
+              const base = heuristic.find((h) => h.projectId === String(dbProject._id));
+              const heuristicPct = base?.matchPercentage ?? 50;
+              const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
+              const blended = Math.round(aiPct * 0.65 + heuristicPct * 0.35);
 
-            return {
-              id: dbProject._id?.toString(),
-              projectId: dbProject._id?.toString(),
-              title: dbProject.title,
-              orgName: dbProject.org,
-              orgSlug: dbProject.orgSlug,
-              techStack: dbProject.techStack || [],
-              description: dbProject.description,
-              matchPercentage: clampMatchPercentage(blended, heuristicPct),
-              reasoning:
-                typeof match.reasoning === 'string' && match.reasoning.trim()
-                  ? match.reasoning.trim().slice(0, 600)
-                  : base?.reasoning || 'Strong skill alignment with your profile.',
-              programName: dbProject.programName || 'Open Source Program',
-              programColor: dbProject.programColor || '#4285F4',
-              programSlug: dbProject.programSlug,
-              difficulty: dbProject.difficulty,
-              year: dbProject.year,
-              matchedSkills: matched.slice(0, 8),
-              githubUrl: dbProject.githubUrl,
-              orgLogoUrl: dbProject.orgLogoUrl,
-              orgWebsiteUrl: dbProject.orgWebsiteUrl,
-              orgGithubUrl: dbProject.orgGithubUrl,
-              orgCategory: dbProject.orgCategory,
-              orgDescription: dbProject.orgDescription,
-              orgIdeasUrl: dbProject.orgIdeasUrl,
-              orgTopics: dbProject.orgTopics,
-              yearlyStats: dbProject.yearlyStats,
-              stars: dbProject.stars,
-              mentors: dbProject.mentors,
-            } as MatchResult;
-          })
-          .filter(Boolean) as MatchResult[];
+              return {
+                id: dbProject._id?.toString(),
+                projectId: dbProject._id?.toString(),
+                title: dbProject.title,
+                orgName: dbProject.org,
+                orgSlug: dbProject.orgSlug,
+                techStack: dbProject.techStack || [],
+                description: dbProject.description,
+                matchPercentage: clampMatchPercentage(blended, heuristicPct),
+                reasoning:
+                  typeof match.reasoning === 'string' && match.reasoning.trim()
+                    ? match.reasoning.trim().slice(0, 600)
+                    : base?.reasoning || `Direct skill match for ${skills.join(', ')} with ${dbProject.org}.`,
+                programName: dbProject.programName || 'Open Source Program',
+                programColor: dbProject.programColor || '#4285F4',
+                programSlug: dbProject.programSlug,
+                difficulty: dbProject.difficulty,
+                year: dbProject.year,
+                matchedSkills: matched.slice(0, 8),
+                githubUrl: dbProject.githubUrl,
+                orgLogoUrl: dbProject.orgLogoUrl,
+                orgWebsiteUrl: dbProject.orgWebsiteUrl,
+                orgGithubUrl: dbProject.orgGithubUrl,
+                orgCategory: dbProject.orgCategory,
+                orgDescription: dbProject.orgDescription,
+                orgIdeasUrl: dbProject.orgIdeasUrl,
+                orgTopics: dbProject.orgTopics,
+                yearlyStats: dbProject.yearlyStats,
+                stars: dbProject.stars,
+                mentors: dbProject.mentors,
+              } as MatchResult;
+            })
+            .filter(Boolean) as MatchResult[];
 
-        if (aiMapped.length > 0) {
-          finalMatches = enforceOrgDiversity(aiMapped, 2, TOP_RESULTS);
-          mode = 'openai';
+          if (geminiMapped.length > 0) {
+            finalMatches = enforceOrgDiversity(geminiMapped, 2, TOP_RESULTS);
+            mode = 'gemini';
+            aiSuccess = true;
+          }
         }
-      } catch (apiErr) {
-        const status =
-          apiErr && typeof apiErr === 'object' && 'status' in apiErr
-            ? Number((apiErr as { status?: number }).status)
-            : 0;
-        if (status === 401 || status === 403 || status === 429) {
-          disableOpenAITemporarily(status === 429 ? 5 * 60_000 : 30 * 60_000);
-          console.warn(
-            `OpenAI matcher disabled temporarily (HTTP ${status}); using heuristic ranking.`
-          );
-        } else {
-          console.warn('OpenAI matcher failed, using heuristic:', apiErr);
+      } catch (geminiErr) {
+        console.warn('Gemini matcher call failed, trying fallback:', geminiErr);
+      }
+    }
+
+    // 2. Try OpenAI if Gemini didn't run or failed
+    if (!aiSuccess && pool.length > 0) {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'system', content: systemPrompt }],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+            max_tokens: 2400,
+          });
+
+          const aiResponseText = completion.choices[0].message.content || '{"matches":[]}';
+          const parsedAI = JSON.parse(aiResponseText) as {
+            matches?: Array<{ id: number; matchPercentage: number; reasoning: string }>;
+          };
+
+          const aiMapped = (parsedAI.matches || [])
+            .map((match) => {
+              const entry = pool.find((x) => x.index === match.id);
+              const dbProject = entry?.p;
+              if (!dbProject) return null;
+              const { matched } = skillOverlap(dbProject, skills);
+              const base = heuristic.find((h) => h.projectId === String(dbProject._id));
+              const heuristicPct = base?.matchPercentage ?? 50;
+              const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
+              const blended = Math.round(aiPct * 0.55 + heuristicPct * 0.45);
+
+              return {
+                id: dbProject._id?.toString(),
+                projectId: dbProject._id?.toString(),
+                title: dbProject.title,
+                orgName: dbProject.org,
+                orgSlug: dbProject.orgSlug,
+                techStack: dbProject.techStack || [],
+                description: dbProject.description,
+                matchPercentage: clampMatchPercentage(blended, heuristicPct),
+                reasoning:
+                  typeof match.reasoning === 'string' && match.reasoning.trim()
+                    ? match.reasoning.trim().slice(0, 600)
+                    : base?.reasoning || 'Strong skill alignment with your profile.',
+                programName: dbProject.programName || 'Open Source Program',
+                programColor: dbProject.programColor || '#4285F4',
+                programSlug: dbProject.programSlug,
+                difficulty: dbProject.difficulty,
+                year: dbProject.year,
+                matchedSkills: matched.slice(0, 8),
+                githubUrl: dbProject.githubUrl,
+                orgLogoUrl: dbProject.orgLogoUrl,
+                orgWebsiteUrl: dbProject.orgWebsiteUrl,
+                orgGithubUrl: dbProject.orgGithubUrl,
+                orgCategory: dbProject.orgCategory,
+                orgDescription: dbProject.orgDescription,
+                orgIdeasUrl: dbProject.orgIdeasUrl,
+                orgTopics: dbProject.orgTopics,
+                yearlyStats: dbProject.yearlyStats,
+                stars: dbProject.stars,
+                mentors: dbProject.mentors,
+              } as MatchResult;
+            })
+            .filter(Boolean) as MatchResult[];
+
+          if (aiMapped.length > 0) {
+            finalMatches = enforceOrgDiversity(aiMapped, 2, TOP_RESULTS);
+            mode = 'openai';
+            aiSuccess = true;
+          }
+        } catch (apiErr) {
+          const status =
+            apiErr && typeof apiErr === 'object' && 'status' in apiErr
+              ? Number((apiErr as { status?: number }).status)
+              : 0;
+          if (status === 401 || status === 403 || status === 429) {
+            disableOpenAITemporarily(status === 429 ? 5 * 60_000 : 30 * 60_000);
+          }
         }
-        finalMatches = heuristic;
-        mode = 'heuristic';
       }
     }
 

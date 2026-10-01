@@ -10,11 +10,17 @@ export type GeminiImproveResult = {
   rationale: string;
 };
 
-const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as const;
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-flash-latest',
+  'gemini-1.5-flash',
+] as const;
 
 export async function generateGeminiContent(
   prompt: string,
-  systemInstruction?: string
+  systemInstruction?: string,
+  options?: { responseMimeType?: string; maxTokens?: number; temperature?: number }
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
@@ -23,10 +29,10 @@ export async function generateGeminiContent(
   }
 
   // Bound prompt size to reduce cost / abuse if callers pass huge drafts
-  const safePrompt = prompt.slice(0, 24_000);
-  const safeSystem = systemInstruction?.slice(0, 4_000);
+  const safePrompt = prompt.slice(0, 32_000);
+  const safeSystem = systemInstruction?.slice(0, 8_000);
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     contents: [
       {
         role: 'user',
@@ -40,8 +46,9 @@ export async function generateGeminiContent(
       },
     ],
     generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 1024,
+      temperature: options?.temperature ?? 0.2,
+      maxOutputTokens: options?.maxTokens ?? 2048,
+      ...(options?.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
     },
   };
 
@@ -55,7 +62,7 @@ export async function generateGeminiContent(
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(7000),
+        signal: AbortSignal.timeout(9000),
       });
 
       if (res.ok) {
@@ -76,6 +83,35 @@ export async function generateGeminiContent(
   }
 
   return null;
+}
+
+export async function generateGeminiStructuredJson<T>(
+  prompt: string,
+  systemInstruction?: string,
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<T | null> {
+  const text = await generateGeminiContent(prompt, systemInstruction, {
+    responseMimeType: 'application/json',
+    temperature: options?.temperature ?? 0.2,
+    maxTokens: options?.maxTokens ?? 2500,
+  });
+
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // If wrapped in markdown code fence, strip it
+    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]) as T;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 }
 
 export async function improveProposalSectionWithGemini(params: {

@@ -222,10 +222,12 @@ export const SKILL_ALIASES: Record<string, string[]> = {
   javascript: ['javascript', 'js', 'typescript', 'ts', 'node.js', 'nodejs', 'react', 'electron'],
   typescript: ['typescript', 'ts', 'javascript', 'react', 'node.js', 'electron', 'next.js'],
   python: ['python', 'django', 'flask', 'fastapi', 'ai', 'ml', 'pytorch', 'tensorflow'],
-  'c++': ['c++', 'c/c++', 'cpp', 'c'],
-  'c/c++': ['c/c++', 'c++', 'cpp', 'c'],
-  c: ['c', 'c++', 'c/c++'],
-  java: ['java', 'spring boot', 'android', 'kotlin'],
+  'c++': ['c++', 'c/c++', 'cpp', 'c', 'qt', 'cmake'],
+  'c/c++': ['c/c++', 'c++', 'cpp', 'c', 'cmake'],
+  c: ['c', 'c++', 'c/c++', 'posix', 'linux'],
+  java: ['java', 'spring', 'spring boot', 'android', 'kotlin', 'gradle', 'maven', 'jvm'],
+  kotlin: ['kotlin', 'android', 'java', 'mobile', 'kmp'],
+  swift: ['swift', 'ios', 'mobile', 'macos', 'apple', 'xcode'],
   'node.js': ['node.js', 'nodejs', 'javascript', 'express', 'typescript', 'electron'],
   nodejs: ['node.js', 'nodejs', 'javascript', 'express', 'typescript', 'electron'],
   react: ['react', 'reactjs', 'react.js', 'javascript', 'typescript', 'next.js', 'react native', 'electron'],
@@ -233,8 +235,8 @@ export const SKILL_ALIASES: Record<string, string[]> = {
   'react-native': ['react native', 'react-native', 'react', 'mobile', 'javascript', 'typescript'],
   electron: ['electron', 'javascript', 'typescript', 'node.js', 'react', 'desktop'],
   'next.js': ['next.js', 'nextjs', 'react', 'typescript', 'javascript'],
-  flutter: ['flutter', 'dart', 'mobile', 'ui/ux', 'frontend', 'cross-platform'],
-  dart: ['dart', 'flutter', 'mobile', 'frontend'],
+  flutter: ['flutter', 'dart', 'mobile', 'cross-platform'],
+  dart: ['dart', 'flutter', 'mobile'],
   jenkins: ['jenkins', 'ci/cd', 'devops', 'continuous integration', 'java', 'docker', 'automation'],
   'machine learning': ['machine learning', 'ml', 'deep learning', 'pytorch', 'tensorflow', 'data science', 'ai'],
   ml: ['machine learning', 'ml', 'pytorch', 'tensorflow', 'ai'],
@@ -245,9 +247,9 @@ export const SKILL_ALIASES: Record<string, string[]> = {
   'data science': ['data science', 'python', 'machine learning', 'jupyter'],
   golang: ['go', 'golang'],
   go: ['go', 'golang'],
-  rust: ['rust'],
-  docker: ['docker', 'kubernetes', 'devops'],
-  kubernetes: ['kubernetes', 'k8s', 'docker'],
+  rust: ['rust', 'cargo', 'tokio', 'actix', 'serde', 'tauri', 'webassembly', 'wasm'],
+  docker: ['docker', 'containers', 'containerd', 'kubernetes', 'devops'],
+  kubernetes: ['kubernetes', 'k8s', 'docker', 'cloud native', 'cncf'],
   html: ['html', 'html/css', 'css', 'javascript'],
   'html/css': ['html/css', 'html', 'css', 'javascript'],
   css: ['css', 'html/css', 'tailwindcss'],
@@ -257,14 +259,31 @@ export const SKILL_ALIASES: Record<string, string[]> = {
   'computer vision': ['computer vision', 'opencv', 'machine learning', 'python', 'ai'],
   reactjs: ['react', 'reactjs', 'react.js', 'javascript', 'typescript', 'react native'],
   'react.js': ['react', 'reactjs', 'react.js', 'javascript', 'typescript', 'react native'],
-  vuejs: ['vue', 'vuejs', 'vue.js', 'javascript', 'typescript'],
-  'vue.js': ['vue', 'vuejs', 'vue.js', 'javascript', 'typescript'],
-  angularjs: ['angular', 'angularjs', 'angular.js', 'javascript', 'typescript'],
-  'angular.js': ['angular', 'angularjs', 'angular.js', 'javascript', 'typescript'],
+  vuejs: ['vue', 'vuejs', 'vue.js'],
+  'vue.js': ['vue', 'vuejs', 'vue.js'],
+  vue: ['vue', 'vuejs', 'vue.js'],
+  angularjs: ['angular', 'angularjs', 'angular.js'],
+  'angular.js': ['angular', 'angularjs', 'angular.js'],
+  angular: ['angular', 'angularjs', 'angular.js'],
+  svelte: ['svelte', 'sveltekit'],
   sqlite: ['sqlite', 'database', 'sql'],
   sql: ['sql', 'postgresql', 'mysql', 'sqlite', 'database'],
+  postgresql: ['postgresql', 'postgres', 'sql', 'database'],
+  postgres: ['postgresql', 'postgres', 'sql', 'database'],
+  mongodb: ['mongodb', 'nosql', 'database'],
+  redis: ['redis', 'cache', 'database'],
   cpp: ['c++', 'c/c++', 'cpp', 'c'],
   cplusplus: ['c++', 'c/c++', 'cpp', 'c'],
+  'c#': ['c#', '.net', 'dotnet', 'asp.net', 'csharp', 'unity'],
+  csharp: ['c#', '.net', 'dotnet', 'asp.net', 'csharp', 'unity'],
+  ruby: ['ruby', 'rails', 'ruby on rails'],
+  php: ['php', 'laravel', 'symfony', 'wordpress'],
+  r: ['r', 'r-project', 'cran', 'bioconductor'],
+  julia: ['julia', 'scientific computing'],
+  linux: ['linux', 'kernel', 'posix', 'shell', 'bash'],
+  shell: ['shell', 'bash', 'zsh', 'sh'],
+  bash: ['shell', 'bash', 'zsh', 'sh', 'linux'],
+  graphql: ['graphql', 'apollo', 'api'],
 };
 
 export function expandSkillToTokens(rawSkill: string): string[] {
@@ -274,8 +293,9 @@ export function expandSkillToTokens(rawSkill: string): string[] {
   const parts = lower.split(/[\/&+,]/).map((p) => p.trim()).filter(Boolean);
   for (const p of parts) tokens.add(p);
 
+  // Exact matching for domain pillars to prevent false substring collisions
   for (const [, def] of Object.entries(DOMAIN_PILLARS)) {
-    if (def.aliases.some((a) => lower === a || lower.includes(a) || a.includes(lower))) {
+    if (def.aliases.some((a) => lower === a)) {
       for (const t of def.tokens) tokens.add(t.toLowerCase());
     }
   }
@@ -337,11 +357,12 @@ export async function findProjectsBySkills(
     programSlugs?: string[] | null;
   }
 ) {
-  const { direct, expanded, requirements } = expandSkillTokens(skills);
+  const { direct, expanded } = expandSkillTokens(skills);
   if (direct.length === 0 && expanded.length === 0) return [];
 
   const collection = await getCollection<Project>(COLLECTIONS.projects);
 
+  const directRegexes = direct.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i'));
   const expandedRegexes = expanded.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i'));
 
   let programIds: unknown[] | null = null;
@@ -361,223 +382,119 @@ export async function findProjectsBySkills(
       ? new RegExp(`^${escapeRegex(difficulty)}$`, 'i')
       : null;
 
-  try {
-    const reqFields: Record<string, unknown> = {};
-    requirements.forEach((req, idx) => {
-      const tokens = req.tokens;
-      reqFields[`req_satisfied_${idx}`] = {
-        $or: [
-          {
-            $gt: [
-              {
-                $size: {
-                  $filter: {
-                    input: {
-                      $concatArrays: [
-                        { $ifNull: ['$techStack', []] },
-                        { $ifNull: ['$topics', []] },
-                      ],
-                    },
-                    as: 'item',
-                    cond: { $in: [{ $toLower: '$$item' }, tokens] },
-                  },
-                },
-              },
-              0,
-            ],
-          },
-          {
-            $regexMatch: {
-              input: { $ifNull: ['$title', ''] },
-              regex: new RegExp(tokens.filter((t) => t.length >= 2).map(escapeRegex).join('|'), 'i'),
-            },
-          },
-          {
-            $regexMatch: {
-              input: { $ifNull: ['$description', ''] },
-              regex: new RegExp(tokens.filter((t) => t.length >= 3).slice(0, 16).map(escapeRegex).join('|'), 'i'),
-            },
-          },
-        ],
-      };
-    });
-
-    const sumReqConditions = requirements.map((_, idx) => ({
-      $cond: [`$req_satisfied_${idx}`, 1, 0],
-    }));
-
-    const pipeline: Record<string, unknown>[] = [
-      {
-        $match: {
-          $and: [
-            {
-              $or: [
-                { techStack: { $in: expandedRegexes } },
-                {
-                  topics: {
-                    $in: expanded.slice(0, 30).map((t) => new RegExp(escapeRegex(t), 'i')),
-                  },
-                },
-                {
-                  title: {
-                    $in: expanded.slice(0, 30).map((t) => new RegExp(escapeRegex(t), 'i')),
-                  },
-                },
-              ],
-            },
-            ...(programIds ? [{ programId: { $in: programIds } }] : []),
-            ...(difficultyRegex ? [{ difficulty: difficultyRegex }] : []),
-          ],
-        },
-      },
-      {
-        $project: {
-          title: 1,
-          org: 1,
-          orgSlug: 1,
-          difficulty: 1,
-          techStack: 1,
-          description: 1,
-          year: 1,
-          stars: 1,
-          programId: 1,
-          topics: 1,
-          mentors: 1,
-          githubUrl: 1,
-          applicationDeadline: 1,
-          programName: 1,
-          programColor: 1,
-          orgLogoUrl: 1,
-          orgWebsiteUrl: 1,
-          orgGithubUrl: 1,
-          orgCategory: 1,
-          orgDescription: 1,
-          orgIdeasUrl: 1,
-          orgTopics: 1,
-          yearlyStats: 1,
-        },
-      },
-      {
-        $addFields: {
-          ...reqFields,
-          directMatchCount: {
-            $size: {
-              $filter: {
-                input: { $ifNull: ['$techStack', []] },
-                as: 'tech',
-                cond: {
-                  $in: [{ $toLower: '$$tech' }, direct],
-                },
-              },
-            },
-          },
-          yearVal: { $ifNull: ['$year', 2020] },
-        },
-      },
-      {
-        $addFields: {
-          requirementsCoveredCount: {
-            $add: sumReqConditions.length > 0 ? sumReqConditions : [0],
-          },
-        },
-      },
-      {
-        $addFields: {
-          matchScore: {
-            $add: [
-              { $multiply: ['$requirementsCoveredCount', 30] },
-              { $multiply: [{ $min: ['$directMatchCount', 3] }, 8] },
-              {
-                $cond: [
-                  { $gte: ['$yearVal', 2024] },
-                  6,
-                  { $cond: [{ $gte: ['$yearVal', 2020] }, 3, 1] },
-                ],
-              },
-            ],
-          },
-        },
-      },
-      {
-        $sort: {
-          matchScore: -1,
-          yearVal: -1,
-        },
-      },
-      {
-        $limit: 600,
-      },
-    ];
-
-    const rawCandidates = await collection.aggregate<Project>(pipeline as never, { allowDiskUse: true }).toArray();
-    if (rawCandidates.length > 0) {
-      // Group by organization in JS and take top 3 candidate projects per org
-      const orgMap = new Map<string, Project[]>();
-      for (const p of rawCandidates) {
-        const orgKey = (p.orgSlug || p.org || 'unknown').toLowerCase().trim();
-        if (!orgMap.has(orgKey)) orgMap.set(orgKey, []);
-        if ((orgMap.get(orgKey)?.length || 0) < 3) {
-          orgMap.get(orgKey)!.push(p);
-        }
-      }
-
-      // Sort organizations by their top project's matchScore
-      const sortedOrgs = Array.from(orgMap.entries()).sort(
-        (a, b) => ((b[1][0] as unknown as { matchScore?: number }).matchScore || 0) -
-                  ((a[1][0] as unknown as { matchScore?: number }).matchScore || 0)
-      );
-
-      const targetPoolSize = Math.max(limit * 2, 80);
-      const pool: Project[] = [];
-
-      // Pass 1: Best project from each org
-      for (const [, projects] of sortedOrgs) {
-        if (projects[0]) pool.push(projects[0]);
-        if (pool.length >= targetPoolSize) break;
-      }
-      // Pass 2: 2nd best project from each org if pool not yet full
-      if (pool.length < targetPoolSize) {
-        for (const [, projects] of sortedOrgs) {
-          if (projects[1]) pool.push(projects[1]);
-          if (pool.length >= targetPoolSize) break;
-        }
-      }
-      // Pass 3: 3rd project if still needed
-      if (pool.length < targetPoolSize) {
-        for (const [, projects] of sortedOrgs) {
-          if (projects[2]) pool.push(projects[2]);
-          if (pool.length >= targetPoolSize) break;
-        }
-      }
-
-      return pool;
-    }
-  } catch {
-    // Fall back to standard query if aggregation fails
-  }
+  // Title search tokens for direct skills (length >= 2, e.g. rust, go, c++, qt, python, react)
+  const titleRegexes = direct
+    .filter((t) => t.length >= 2)
+    .map((t) => new RegExp(escapeRegex(t), 'i'));
 
   const filter: Record<string, unknown> = {
-    techStack: { $in: expandedRegexes },
+    $or: [
+      { techStack: { $in: expandedRegexes } },
+      { topics: { $in: expandedRegexes } },
+      ...(titleRegexes.length > 0 ? [{ title: { $in: titleRegexes } }] : []),
+    ],
   };
+
   if (programIds) filter.programId = { $in: programIds };
   if (difficultyRegex) filter.difficulty = difficultyRegex;
 
-  const fallback = await collection
+  // Fetch candidate pool
+  const candidates = await collection
     .find(filter)
     .sort({ year: -1, stars: -1 })
-    .limit(limit * 4)
+    .limit(limit * 5)
     .toArray();
 
-  const pool: Project[] = [];
-  const orgCounts = new Map<string, number>();
-  for (const p of fallback) {
-    const orgKey = (p.orgSlug || p.org || 'unknown').toLowerCase().trim();
-    const count = orgCounts.get(orgKey) || 0;
-    if (count < 3) {
-      pool.push(p);
-      orgCounts.set(orgKey, count + 1);
+  if (candidates.length === 0) return [];
+
+  // Score each project specifically based on user requested skills
+  const scored = candidates.map((p) => {
+    const pTechOriginal = p.techStack || [];
+    const pTech = pTechOriginal.map((t) => t.toLowerCase().trim());
+    const pTopics = (p.topics || []).map((t) => t.toLowerCase().trim());
+    const titleLower = (p.title || '').toLowerCase();
+
+    // Direct and expanded skill matches
+    const matchedDirect = direct.filter((s) => pTech.includes(s) || pTopics.includes(s));
+    const matchedExpanded = expanded.filter(
+      (s) => !matchedDirect.includes(s) && (pTech.includes(s) || pTopics.includes(s))
+    );
+
+    let titleHits = 0;
+    for (const s of direct) {
+      if (s.length >= 2 && titleLower.includes(s)) titleHits++;
     }
-    if (pool.length >= limit * 2) break;
+
+    const techCount = Math.max(1, pTech.length);
+
+    // Specificity: rewards projects where user skills are core rather than 1 of 15 tags
+    const specificity = matchedDirect.length / Math.min(techCount, 6);
+    const coverage = direct.length > 0 ? matchedDirect.length / direct.length : 0.5;
+
+    const yearBonus =
+      typeof p.year === 'number'
+        ? p.year >= 2024
+          ? 12
+          : p.year >= 2020
+          ? 6
+          : 2
+        : 2;
+
+    const titleBonus = titleHits * 25;
+
+    const matchScore = coverage * 45 + specificity * 35 + titleBonus + yearBonus;
+
+    // REORDER techStack: matched skills always come first!
+    const matchedSet = new Set([...matchedDirect, ...matchedExpanded]);
+    const reorderedTech = [
+      ...pTechOriginal.filter((t) => matchedSet.has(t.toLowerCase().trim())),
+      ...pTechOriginal.filter((t) => !matchedSet.has(t.toLowerCase().trim())),
+    ];
+
+    return {
+      project: {
+        ...p,
+        techStack: reorderedTech,
+      },
+      matchScore,
+      year: p.year || 0,
+      orgKey: (p.orgSlug || p.org || 'unknown').toLowerCase().trim(),
+    };
+  });
+
+  scored.sort((a, b) => b.matchScore - a.matchScore || b.year - a.year);
+
+  // Group by organization to ensure diversity (max 2-3 per org)
+  const orgMap = new Map<string, Project[]>();
+  for (const item of scored) {
+    if (!orgMap.has(item.orgKey)) orgMap.set(item.orgKey, []);
+    const list = orgMap.get(item.orgKey)!;
+    if (list.length < 3) {
+      list.push(item.project);
+    }
+  }
+
+  const targetPoolSize = Math.max(limit * 2, 80);
+  const pool: Project[] = [];
+
+  // Pass 1: Best project from each org
+  for (const [, projects] of orgMap) {
+    if (projects[0]) pool.push(projects[0]);
+    if (pool.length >= targetPoolSize) break;
+  }
+  // Pass 2: 2nd best project from each org
+  if (pool.length < targetPoolSize) {
+    for (const [, projects] of orgMap) {
+      if (projects[1]) pool.push(projects[1]);
+      if (pool.length >= targetPoolSize) break;
+    }
+  }
+  // Pass 3: 3rd project if still needed
+  if (pool.length < targetPoolSize) {
+    for (const [, projects] of orgMap) {
+      if (projects[2]) pool.push(projects[2]);
+      if (pool.length >= targetPoolSize) break;
+    }
   }
 
   return pool;
