@@ -362,7 +362,6 @@ export async function findProjectsBySkills(
 
   const collection = await getCollection<Project>(COLLECTIONS.projects);
 
-  const directRegexes = direct.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i'));
   const expandedRegexes = expanded.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i'));
 
   let programIds: unknown[] | null = null;
