@@ -9,7 +9,7 @@ import {
 import { findProjectsBySkills, expandSkillTokens } from '@/lib/repositories/projects';
 import { getCollection, COLLECTIONS } from '@/lib/db';
 import { MAX_AI_BODY_BYTES, safeLogError } from '@/lib/security';
-import { generateGeminiStructuredJson } from '@/lib/ai/gemini';
+import { rankProjectsWithGemini, generateGeminiStructuredJson } from '@/lib/ai/gemini';
 import type { Program, Project } from '@/../types';
 
 const MAX_SKILLS = 40;
@@ -151,7 +151,6 @@ async function enrichCandidates(candidates: Project[]): Promise<EnrichedProject[
     }
   }
 
-  // Group aggregate counts by orgSlug
   const countByOrgAndYear = new Map<string, Map<number, number>>();
   for (const row of yearlyAgg) {
     if (row._id?.orgSlug && row._id.year) {
@@ -169,50 +168,49 @@ async function enrichCandidates(candidates: Project[]): Promise<EnrichedProject[
       (p.orgSlug ? orgBySlug.get(p.orgSlug.toLowerCase()) : undefined) ||
       (p.org ? orgByName.get(p.org.toLowerCase()) : undefined);
 
-const KNOWN_ORG_WEBSITES: Record<string, string> = {
-  'rocket-chat': 'https://rocket.chat',
-  'rocketchat': 'https://rocket.chat',
-  'rocket.chat': 'https://rocket.chat',
-  'apache': 'https://apache.org',
-  'python': 'https://python.org',
-  'kde': 'https://kde.org',
-  'gnome': 'https://gnome.org',
-  'mozilla': 'https://mozilla.org',
-  'wikimedia': 'https://wikimediafoundation.org',
-  'tor': 'https://torproject.org',
-  'tor-project': 'https://torproject.org',
-  'homebrew': 'https://brew.sh',
-  'bioconductor': 'https://bioconductor.org',
-  'creative-commons': 'https://creativecommons.org',
-  'debian': 'https://debian.org',
-  'rust': 'https://www.rust-lang.org',
-  'cncf': 'https://cncf.io',
-  'open-robotics': 'https://www.openrobotics.org',
-  'ros': 'https://www.openrobotics.org',
-  'opencv': 'https://opencv.org',
-  'numfocus': 'https://numfocus.org',
-  'jupyter': 'https://jupyter.org',
-  'videolan': 'https://videolan.org',
-  'vlc': 'https://videolan.org',
-  'hyperledger': 'https://hyperledger.org',
-  'huggingface': 'https://huggingface.co',
-  'appwrite': 'https://appwrite.io',
-  'novu': 'https://novu.co',
-  'supabase': 'https://supabase.com',
-  'cal.com': 'https://cal.com',
-  'calcom': 'https://cal.com',
-  'strapi': 'https://strapi.io',
-  'posthog': 'https://posthog.com',
-  'hoppscotch': 'https://hoppscotch.io',
-  'girlscript': 'https://girlscript.tech',
-  'nsoc': 'https://nsoc.in',
-  '52north': 'https://52north.org',
-  '3dtk': 'http://slam6d.sourceforge.net',
-  'aflplusplus': 'https://aflplus.plus',
-  'joplin': 'https://joplinapp.org',
-};
+    const KNOWN_ORG_WEBSITES: Record<string, string> = {
+      'rocket-chat': 'https://rocket.chat',
+      'rocketchat': 'https://rocket.chat',
+      'rocket.chat': 'https://rocket.chat',
+      'apache': 'https://apache.org',
+      'python': 'https://python.org',
+      'kde': 'https://kde.org',
+      'gnome': 'https://gnome.org',
+      'mozilla': 'https://mozilla.org',
+      'wikimedia': 'https://wikimediafoundation.org',
+      'tor': 'https://torproject.org',
+      'tor-project': 'https://torproject.org',
+      'homebrew': 'https://brew.sh',
+      'bioconductor': 'https://bioconductor.org',
+      'creative-commons': 'https://creativecommons.org',
+      'debian': 'https://debian.org',
+      'rust': 'https://www.rust-lang.org',
+      'cncf': 'https://cncf.io',
+      'open-robotics': 'https://www.openrobotics.org',
+      'ros': 'https://www.openrobotics.org',
+      'opencv': 'https://opencv.org',
+      'numfocus': 'https://numfocus.org',
+      'jupyter': 'https://jupyter.org',
+      'videolan': 'https://videolan.org',
+      'vlc': 'https://videolan.org',
+      'hyperledger': 'https://hyperledger.org',
+      'huggingface': 'https://huggingface.co',
+      'appwrite': 'https://appwrite.io',
+      'novu': 'https://novu.co',
+      'supabase': 'https://supabase.com',
+      'cal.com': 'https://cal.com',
+      'calcom': 'https://cal.com',
+      'strapi': 'https://strapi.io',
+      'posthog': 'https://posthog.com',
+      'hoppscotch': 'https://hoppscotch.io',
+      'girlscript': 'https://girlscript.tech',
+      'nsoc': 'https://nsoc.in',
+      '52north': 'https://52north.org',
+      '3dtk': 'http://slam6d.sourceforge.net',
+      'aflplusplus': 'https://aflplus.plus',
+      'joplin': 'https://joplinapp.org',
+    };
 
-    // Derive Org Website and GitHub URLs:
     let orgWebsiteUrl = typeof org?.websiteUrl === 'string' && org.websiteUrl.trim().length > 0
       ? org.websiteUrl.trim()
       : undefined;
@@ -242,7 +240,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
       orgWebsiteUrl = orgGithubUrl || `https://${slugKey.replace(/[^a-z0-9]/g, '')}.org`;
     }
 
-    // Build yearly project stats for bar graph
     const orgCounts = countByOrgAndYear.get(slugKey) || new Map<number, number>();
     const orgYears = Array.isArray(org?.years) ? (org.years as number[]) : [];
     
@@ -252,7 +249,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
       ...(typeof p.year === 'number' ? [p.year] : []),
     ]);
 
-    // Ensure we have a reasonable distribution if sparse
     const sortedYears = Array.from(yearSet).filter((y) => y >= 2017 && y <= 2026).sort((a, b) => a - b);
     const yearlyStats: Array<{ year: number; count: number }> = [];
 
@@ -262,14 +258,12 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
         if (directCount && directCount > 0) {
           yearlyStats.push({ year: y, count: directCount });
         } else {
-          // Hash-based realistic historical count for that org's participating year
           const seed = (slugKey.charCodeAt(0) || 10) + y * 7;
           const pseudoCount = Math.max(3, (seed % 14) + 4);
           yearlyStats.push({ year: y, count: pseudoCount });
         }
       }
     } else {
-      // Default recent history range
       const defaultRange = [2021, 2022, 2023, 2024, 2025, 2026];
       for (const y of defaultRange) {
         const directCount = orgCounts.get(y);
@@ -293,25 +287,6 @@ const KNOWN_ORG_WEBSITES: Record<string, string> = {
     };
   });
 }
-
-const SKILL_SYNONYMS: Record<string, string[]> = {
-  javascript: ['javascript', 'js', 'typescript', 'ts', 'node.js', 'nodejs', 'react', 'electron'],
-  typescript: ['typescript', 'ts', 'javascript', 'js', 'react', 'node.js', 'electron'],
-  react: ['react', 'reactjs', 'react.js', 'react native', 'react-native', 'next.js', 'electron'],
-  'react native': ['react native', 'react-native', 'react', 'mobile'],
-  'react-native': ['react native', 'react-native', 'react', 'mobile'],
-  electron: ['electron', 'desktop', 'node.js', 'javascript', 'typescript', 'react'],
-  'node.js': ['node.js', 'nodejs', 'express', 'javascript', 'typescript'],
-  nodejs: ['node.js', 'nodejs', 'express', 'javascript', 'typescript'],
-  python: ['python', 'django', 'flask', 'fastapi', 'ai', 'ml', 'pytorch', 'tensorflow'],
-  'c++': ['c++', 'c/c++', 'cpp', 'c'],
-  cpp: ['c++', 'c/c++', 'cpp', 'c'],
-  c: ['c', 'c++', 'c/c++'],
-  java: ['java', 'spring boot', 'android', 'kotlin'],
-  rust: ['rust'],
-  go: ['go', 'golang'],
-  golang: ['go', 'golang'],
-};
 
 function skillOverlap(
   project: { techStack?: string[]; topics?: string[]; title?: string; description?: string },
@@ -384,7 +359,6 @@ function difficultyFit(
     if (isIntermediate) return 0.80;
     return 0.50;
   }
-  // intermediate
   if (isIntermediate) return 1;
   if (isBeginner) return 0.8;
   return 0.65;
@@ -413,7 +387,6 @@ function enforceOrgDiversity<T extends { orgName?: string; orgSlug?: string; org
     if (result.length >= totalLimit) break;
   }
 
-  // If there are fewer than totalLimit items, backfill from remaining overflow
   if (result.length < totalLimit && overflow.length > 0) {
     for (const item of overflow) {
       result.push(item);
@@ -434,7 +407,6 @@ function heuristicRank(
     const projectSkills = p.techStack || [];
     const { matched, missing, matchedUserSkillCount, totalUserSkills } = skillOverlap(p, skills);
 
-    // Coverage ratio: how many of the user's requested skills/domains are covered
     const userCoverage = totalUserSkills > 0 ? matchedUserSkillCount / totalUserSkills : 0.5;
     const projectRatio = projectSkills.length > 0 ? matched.length / projectSkills.length : 0.4;
     const diffScore = difficultyFit(p.difficulty, exp);
@@ -454,7 +426,6 @@ function heuristicRank(
       yearScore * 0.12 +
       availScore * 0.08;
 
-    // High quality score range: ~40–97 based on rich multi-skill overlap
     const bonus = Math.min(matched.length, 6) * 2.0 + (p.year && p.year >= 2024 ? 2 : 0);
     const matchPercentage = Math.round(
       Math.min(97, Math.max(40, 38 + raw * 54 + bonus))
@@ -584,58 +555,41 @@ export async function POST(req: Request) {
         id: index,
         title: p.title,
         org: p.org,
-        difficulty: p.difficulty || 'unknown',
+        difficulty: p.difficulty || 'Intermediate',
         year: p.year,
-        techStack: (p.techStack || []).slice(0, 10).join(', '),
+        techStack: (p.techStack || []).slice(0, 12).join(', '),
         matchedSkills: matched.slice(0, 6).join(', '),
-        description: (p.description || '').substring(0, 200),
+        description: (p.description || '').substring(0, 240),
         programName: p.programName,
       };
     });
 
-    const systemPrompt = `You are Orbit AI, an expert open-source mentorship and project matchmaker.
-Rank ONLY from the candidate list. Never invent projects, orgs, or technologies.
-
-User Profile:
-- Skills: ${skills.join(', ')}
-- Experience: ${exp}
-- Location: ${locStr}
-- Availability: ${availNum} hours/week
-
-Candidates (JSON):
-${JSON.stringify(projectsContext)}
-
-Rules:
-1. Return up to ${TOP_RESULTS} best fits ordered best-first.
-2. Strictly prioritize candidates where the user's requested skills (${skills.join(', ')}) are central.
-3. Do NOT favor projects where the user's skill is only a minor footnote among unrelated technologies.
-4. Prefer difficulty aligned with experience (${exp}) and recent years (2024-2026).
-5. matchPercentage: 78–96 for strong direct skill overlap; 50–75 for moderate.
-6. reasoning: 1–2 sentences, concrete, mentioning how the user's specific skills (${skills.join(', ')}) directly apply to this project and organization.
-7. Return ONLY JSON: { "matches": [ { "id": number, "matchPercentage": number, "reasoning": string } ] }
-`;
-
     const activeProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
     let aiSuccess = false;
 
-    // 1. Try Gemini first if configured or fallback
+    // 1. Try Google Gemini (Primary)
     if (activeProvider !== 'openai' && process.env.GEMINI_API_KEY && pool.length > 0) {
       try {
-        const geminiRes = await generateGeminiStructuredJson<{
-          matches?: Array<{ id: number; matchPercentage: number; reasoning: string }>;
-        }>(systemPrompt, undefined, { temperature: 0.2, maxTokens: 2400 });
+        const geminiMatches = await rankProjectsWithGemini({
+          skills,
+          experience: exp,
+          location: locStr,
+          availability: availNum,
+          candidates: projectsContext,
+          topLimit: TOP_RESULTS,
+        });
 
-        if (geminiRes?.matches && Array.isArray(geminiRes.matches) && geminiRes.matches.length > 0) {
-          const geminiMapped = geminiRes.matches
+        if (geminiMatches && geminiMatches.length > 0) {
+          const mapped = geminiMatches
             .map((match) => {
               const entry = pool.find((x) => x.index === match.id);
               const dbProject = entry?.p;
               if (!dbProject) return null;
               const { matched } = skillOverlap(dbProject, skills);
               const base = heuristic.find((h) => h.projectId === String(dbProject._id));
-              const heuristicPct = base?.matchPercentage ?? 50;
+              const heuristicPct = base?.matchPercentage ?? 55;
               const aiPct = clampMatchPercentage(match.matchPercentage, heuristicPct);
-              const blended = Math.round(aiPct * 0.65 + heuristicPct * 0.35);
+              const blended = Math.round(aiPct * 0.60 + heuristicPct * 0.40);
 
               return {
                 id: dbProject._id?.toString(),
@@ -671,8 +625,8 @@ Rules:
             })
             .filter(Boolean) as MatchResult[];
 
-          if (geminiMapped.length > 0) {
-            finalMatches = enforceOrgDiversity(geminiMapped, 2, TOP_RESULTS);
+          if (mapped.length > 0) {
+            finalMatches = enforceOrgDiversity(mapped, 2, TOP_RESULTS);
             mode = 'gemini';
             aiSuccess = true;
           }
@@ -682,11 +636,33 @@ Rules:
       }
     }
 
-    // 2. Try OpenAI if Gemini didn't run or failed
+    // 2. Try OpenAI if Gemini was not used or failed
     if (!aiSuccess && pool.length > 0) {
       const openai = getOpenAIClient();
       if (openai) {
         try {
+          const systemPrompt = `You are an expert open-source mentorship matchmaker.
+Rank ONLY from the candidate list. Never invent projects, orgs, or technologies.
+
+User Profile:
+- Skills: ${skills.join(', ')}
+- Experience: ${exp}
+- Location: ${locStr}
+- Availability: ${availNum} hours/week
+
+Candidates (JSON):
+${JSON.stringify(projectsContext)}
+
+Rules:
+1. Return up to ${TOP_RESULTS} best fits ordered best-first.
+2. Strictly prioritize candidates where the user's requested skills (${skills.join(', ')}) are central.
+3. Prefer difficulty aligned with experience (${exp}).
+4. Align weekly availability (${availNum}h/week) with expected workload.
+5. matchPercentage must reflect real overlap (weak overlap ≤55; strong multi-skill ≥75; never 100).
+6. reasoning: 1–2 sentences, concrete, mention matched skills and how they fit user experience/availability.
+7. Return ONLY JSON: { "matches": [ { "id": number, "matchPercentage": number, "reasoning": string } ] }
+`;
+
           const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [{ role: 'system', content: systemPrompt }],
