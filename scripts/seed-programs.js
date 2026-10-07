@@ -115,10 +115,10 @@ const PROGRAMS_DATA = [
     eligibilitySummary: "Open to all worldwide, no student requirement, MyMLH account required",
     officialWebsite: "https://hacktoberfest.com",
     applicationSteps: [
-      "Sign in or create a MyMLH account on the official portal.",
-      "Register for local in-person Fests (Hack Days and Meetups) or attend virtually.",
-      "Participate in weekly DEV Challenges and Global Hack Week tracks.",
-      "Collect virtual stickers to unlock digital badges and physical sticker pack reward tiers."
+      "Create or link your MyMLH account on the official Hacktoberfest portal.",
+      "RSVP and attend local in-person or virtual community Fests (Hack Days).",
+      "Build open-source AI projects, author a skills.md, or submit to weekly DEV Challenges.",
+      "Collect virtual stickers to unlock digital badges and physical sticker pack rewards."
     ],
     difficulty: "Beginner Friendly",
     pastStats: [

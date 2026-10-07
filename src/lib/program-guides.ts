@@ -103,10 +103,10 @@ const GUIDES: Record<string, ProgramGuide> = {
     overview:
       'Hacktoberfest is stewarded by Major League Hacking (MLH) and DEV, presented by DigitalOcean, centered around the theme "AI belongs to everyone". Pull request quotas have been retired to eliminate low-effort spam. Participation now focuses on 300+ local and virtual Fests (Hack Days and Meetups), weekly DEV Challenges, Global Hack Week (GHW), and collecting virtual stickers via MyMLH to earn digital badges and physical sticker packs.',
     howItWorks: [
-      'Sign in or create a MyMLH account on the official portal.',
-      'Register for local in-person Fests (Hack Days) or join interactive virtual meetups worldwide.',
-      'Participate in weekly DEV Challenges and Global Hack Week (GHW) open-source tracks.',
-      'Collect virtual stickers via MyMLH (3 stickers unlock the physical sticker pack; 10 and 15 stickers unlock higher tiers).',
+      'Create or link your MyMLH account on the official Hacktoberfest portal.',
+      'RSVP and attend local in-person or virtual community Fests (Hack Days).',
+      'Build open-source AI projects, author a skills.md, or submit to weekly DEV Challenges and GHW tracks.',
+      'Collect virtual stickers to unlock digital badges and physical sticker pack reward tiers (3, 10, and 15 stickers).',
     ],
     whoItsFor: [
       'Anyone worldwide — open to students, professionals, and hobbyists alike',
